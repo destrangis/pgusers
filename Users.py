@@ -1,3 +1,4 @@
+from Database import Database
 
 OK = 0
 NO_SUCH_USER = 1
@@ -10,24 +11,26 @@ class UserSpace(object):
 	
 	userspaces = {}    # instance list
 	
-	def __new__(self, *args, **kwargs):
+	def __new__(cls, *args, **kwargs):
 		'''Return the existing instance if already created or create a new one.
 		'''
-		dbname = kwargs.get("dbname", None)
-		if dbname is none:
-			raise BadCallError("dbname arg not specified. Use UserSpace(dbname=<name>)")
+		dbname = kwargs.get("database", None)
+		if dbname is None:
+			raise BadCallError("database arg not specified. "
+								"Use UserSpace(database=<name>)")
 			
-		if self.userspaces.get(dbname, False):
-			return self.userspaces[dbname]
+		if cls.userspaces.get(dbname, False):
+			return cls.userspaces[dbname]
 		else:
-			newobj = super(UserSpace, self).__new__(*args, **kwargs)
+			newobj = super().__new__(cls)
+			cls.userspaces[dbname] = newobj
 			return newobj
 			
 			
 	def __init__(self, **kwargs):
-		dbname = kwargs["dbname"]
-		self.userspaces[dbname] = self
-			
+		self.dbname = kwargs.get("database", "NONAME")
+		self.db = Database()
+		self.connector = self.db.connect(**kwargs)	
 	
 	def create_user(username, password, email, extra_data=None):
 		'''Create a user in the UserSpace's database.
@@ -106,6 +109,10 @@ class UserSpace(object):
 		'''
 		pass
 		
+
+def dbm_select(connector_name):
+	Database.install_connector(connector_name)
+	
 		
 def __dbinit(database):
 	'''Create a new database structure
