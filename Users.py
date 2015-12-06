@@ -32,7 +32,7 @@ class UserSpace(object):
 		self.db = Database()
 		self.connector = self.db.connect(**kwargs)	
 	
-	def create_user(username, password, email, extra_data=None):
+	def create_user(self, username, password, email, extra_data=None):
 		'''Create a user in the UserSpace's database.
 		@param username	The username to be created
 		@param password The user's password in cleartext
@@ -45,16 +45,17 @@ class UserSpace(object):
 		'''
 		pass
 		
-	def validate_user(username, password):
+	def validate_user(self, username, password):
 		'''Validates (or logs in) a username.
 		@param	username	The user's username
 		@param 	password	The user's password in cleartext
 		
-		@return	Session key, as a string
+		@return	Session key, as a string or empty string if not found 
+				or wrong password.
 		'''
 		pass	
 		
-	def delete_user(username=None, userid=None):
+	def delete_user(self, username=None, userid=None):
 		'''Delete a user given either its username or userid.
 		
 		Either username or userid must be specified.
@@ -68,7 +69,7 @@ class UserSpace(object):
 		'''
 		pass
 		
-	def change_password(username, newpassword, oldpassword=None):
+	def change_password(self, username, newpassword, oldpassword=None):
 		'''Change a user's password
 		@param	username	The username
 		@param	newpassword	The new password
@@ -82,7 +83,7 @@ class UserSpace(object):
 		'''
 		pass
 		
-	def check_key(key):
+	def check_key(self, key):
 		'''Reset the session timeout.
 		@param	key	The session key returned by validate_user()
 		@returns	Tuple of the form (rc, username, userid)
@@ -93,14 +94,14 @@ class UserSpace(object):
 		'''
 		pass
 		
-	def set_session_TTL(minutes):
+	def set_session_TTL(self, minutes):
 		'''Sets the TTL for all sessions.
 		@param	minutes	number of minutes of Time To Live.
 		All sessions will be reset to this new TTL value.
 		'''
 		pass
 		
-	def find_user(username=None, email=None, userid=None):
+	def find_user(self, username=None, email=None, userid=None):
 		'''Find a user given either its username, its email or its userid.
 		@param	username	The username string.
 		@param	email		The email string.
