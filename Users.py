@@ -1,3 +1,8 @@
+
+import os
+import hashlib
+import pickle
+
 from Database import Database
 
 OK = 0
@@ -30,20 +35,58 @@ class UserSpace(object):
 	def __init__(self, **kwargs):
 		self.dbname = kwargs.get("database", "NONAME")
 		self.db = Database()
-		self.connector = self.db.connect(**kwargs)	
+		self.connector = self.db.connect(**kwargs)
+		dbinit(self.connector)	
+	
+	@staticmethod
+	def xor_with_salt(strng, salt):
+		lp = len(strng)
+		ls = len(salt)
+		ns = lp // ls + 1
+		nsalt = salt * ns
+		xorlist = []
+		for c1, c2 in zip(nsalt, bytes(strng, "utf-8")):
+			xorlist.append(c1 ^ c2)
+		return bytes(xorlist)
+		
 	
 	def create_user(self, username, password, email, extra_data=None):
 		'''Create a user in the UserSpace's database.
-		@param username	The username to be created
+		@param username	The username to be created, if there is already
+		                a record with that username, a BadCallError is
+		                raised.
 		@param password The user's password in cleartext
 		@param email	Email for notifications or password recovery.
+						BadCallError is raised if the email exists in 
+						the database.
 		@param extra_data An application dependent dictionary to be stored
 						as a pickle (e.g. phone number, password reminders,
 						etc)
 						
 		@return Integer representing the user id
 		'''
-		pass
+		salt = os.urandom(16)
+		kpasswd = hashlib.md5(self.xor_with_salt(password, salt)).hexdigest()
+		edata = pickle.dumps(extra_data)
+		cr = self.connector.cursor()
+		try:
+			cr.execute("insert into users values (?, ?, ?, ?, ?, ?)",
+						(None,
+						 username,
+						 email,
+						 salt,
+						 kpasswd,
+						 edata) )
+		except Exception as err:
+			raise BadCallError(str(err))
+		else:
+			cr.execute("select userid from users where username = ?", (username,) )
+			userid = cr.fetchone()[0]
+		finally:
+			self.connector.commit()
+			cr.close()
+		return userid
+						 
 		
 	def validate_user(self, username, password):
 		'''Validates (or logs in) a username.
@@ -67,7 +110,27 @@ class UserSpace(object):
 		
 		@throws BadCallError if neither username or userid are specified.
 		'''
-		pass
+		query_stmt = "delete from users where {} = ?"
+		if username is not None:
+			query = query_stmt.format("username")
+			value = username
+		elif userid is not None:
+			query = query_stmt.format("userid")
+			value = userid
+		else:
+			raise BadCallError("delete_user(): Either 'username'"
+			                 + " or 'userid' must be specified.")
+			
+		cr = self.connector.cursor()
+		cr.execute(query, (value,))
+		if cr.rowcount == 0:
+			rc = NO_SUCH_USER
+		else:
+			rc = OK
+		cr.close()
+		return rc
+		 
+			
 		
 	def change_password(self, username, newpassword, oldpassword=None):
 		'''Change a user's password
@@ -107,31 +170,64 @@ class UserSpace(object):
 		@param	email		The email string.
 		@param	userid		The userid (integer)
 		@returns A dictionary with fields userid, username, email and extra_data
+		         None if not found.
 		'''
-		pass
+		query_stmt = ("select userid, username, email, extra_data "
+		            + "from users where {} = ?")
+		if username is not None:
+			query = query_stmt.format("username")
+			value = username
+		elif email is not None:
+			query = query_stmt.format("email")
+			value = email
+		elif userid is not None:
+			query = query_stmt.format("userid")
+			value = userid
+		else:
+			raise BadCallError("find_user(): Either 'username', "
+			                 + "'email' or 'userid' must be specified.")
+
+		cr = self.connector.cursor()
+		cr.execute(query, (value,))
+		
+		row = cr.fetchone()
+		if row is not None:
+			ret_row = { d[0]: v for d, v in zip(cr.description, row) }
+			ret_row["extra_data"] = pickle.loads(ret_row["extra_data"])
+		else:
+			ret_row = None
+			
+		cr.close()
+		return ret_row
+			
 		
 
 def dbm_select(connector_name):
 	Database.install_connector(connector_name)
 	
 		
-def __dbinit(database):
+def dbinit(db):
 	'''Create a new database structure
 	'''		
 	sql = [  # statements to be executed in sequence
-	'''create table users (
+	'''create table if not exists users (
 			userid		integer primary key autoincrement,
-			username	varchar(20),
-			email		varchar(128),
+			username	varchar(20) unique,
+			email		varchar(128) unique,
 			salt		varchar(16),
 			kpasswd		varchar(32),
 			extra_data	blob
 			)
 	''',
-	'''create table sessions (
+	'''create table if not exists sessions (
 			userid	integer,
 			key 	varchar(64),
 			expiration integer
 			)
 	''',
 	      ]
+
+	for stmt in sql:
+		db.execute(stmt)
+	db.commit()
+	return db
