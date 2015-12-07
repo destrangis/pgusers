@@ -96,7 +96,7 @@ class UserSpace(object):
 		@return	Session key, as a string or empty string if not found 
 				or wrong password.
 		'''
-		pass	
+		raise NotImplementedError
 		
 	def delete_user(self, username=None, userid=None):
 		'''Delete a user given either its username or userid.
