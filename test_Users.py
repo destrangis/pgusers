@@ -81,6 +81,11 @@ class UserTests(unittest.TestCase):
 		self.assertEqual(udata["email"], "user3@abc.de")
 		self.assertEqual(udata["extra_data"], {"data1":543})
 		
+	def test_nonexisting_users_not_found(self):
+		"Search for nonexisting user returns None"
+		udata = self.us.find_user(userid=5404)
+		self.assertIsNone(udata)
+		
 	def test_find_user_needs_parameter(self):
 		"find_user without one argument throws exception"
 		self.assertRaises(Users.BadCallError, 
