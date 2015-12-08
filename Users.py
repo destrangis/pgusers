@@ -2,20 +2,27 @@
 import os
 import hashlib
 import pickle
+import binascii
+import time
 
 from Database import Database
 
 OK = 0
-NO_SUCH_USER = 1
+NOT_FOUND = 1
 EXPIRED = 2
+REJECTED = 3
+
+__version__ = (0, 0, 1)
+version     = "{0}.{1}.{2}".format(*__version__)
 
 class BadCallError(Exception):
 	pass
 
 class UserSpace(object):
 	
-	userspaces = {}    # instance list
-	
+	userspaces = {}     # instance list
+	ttl = 3600.0        # time in seconds before a session times out
+		
 	def __new__(cls, *args, **kwargs):
 		'''Return the existing instance if already created or create a new one.
 		'''
@@ -36,19 +43,7 @@ class UserSpace(object):
 		self.dbname = kwargs.get("database", "NONAME")
 		self.db = Database()
 		self.connector = self.db.connect(**kwargs)
-		dbinit(self.connector)	
-	
-	@staticmethod
-	def xor_with_salt(strng, salt):
-		lp = len(strng)
-		ls = len(salt)
-		ns = lp // ls + 1
-		nsalt = salt * ns
-		xorlist = []
-		for c1, c2 in zip(nsalt, bytes(strng, "utf-8")):
-			xorlist.append(c1 ^ c2)
-		return bytes(xorlist)
-		
+		_dbinit(self.connector)	
 	
 	def create_user(self, username, password, email, extra_data=None):
 		'''Create a user in the UserSpace's database.
@@ -66,7 +61,8 @@ class UserSpace(object):
 		@return Integer representing the user id
 		'''
 		salt = os.urandom(16)
-		kpasswd = hashlib.md5(self.xor_with_salt(password, salt)).hexdigest()
+		bpwd = bytes(password, "utf-8")
+		kpasswd = hashlib.pbkdf2_hmac("sha512", bpwd, salt, 100000)
 		edata = pickle.dumps(extra_data)
 		cr = self.connector.cursor()
 		try:
@@ -74,8 +70,8 @@ class UserSpace(object):
 						(None,
 						 username,
 						 email,
-						 salt,
-						 kpasswd,
+						 binascii.hexlify(salt),
+						 binascii.hexlify(kpasswd),
 						 edata) )
 		except Exception as err:
 			raise BadCallError(str(err))
@@ -96,7 +92,34 @@ class UserSpace(object):
 		@return	Session key, as a string or empty string if not found 
 				or wrong password.
 		'''
-		raise NotImplementedError
+		cr = self.connector.cursor()
+		cr.execute("""select userid, username, salt, kpasswd 
+		              from users where username = ?""", (username,))
+		assert cr.rowcount <= 1
+		row = cr.fetchone()
+		cr.close()
+		if row is None:
+			return ""
+		userid, username, salt, kpasswd = row
+		bpwd = bytes(password, "utf-8")
+		hpwd = hashlib.pbkdf2_hmac("sha512", bpwd, 
+									binascii.unhexlify(salt), 100000) 
+		if binascii.unhexlify(kpasswd) == hpwd:
+			return self._make_session_key(userid)
+		else:
+			return ""
+			
+	def _make_session_key(self, userid):
+		now = time.time()
+		timeout = self.ttl + now
+		sessid = hashlib.md5(bytes(str(userid)+str(now), "utf-8")).digest()
+		xsessid = binascii.hexlify(sessid)
+		cr = self.connector.cursor()
+		cr.execute("insert into sessions values (?, ?, ?)",
+					(userid, xsessid, timeout))
+		self.connector.commit()
+		cr.close()
+		return xsessid
 		
 	def delete_user(self, username=None, userid=None):
 		'''Delete a user given either its username or userid.
@@ -106,7 +129,7 @@ class UserSpace(object):
 		@param	username	The username (string)
 		@param	userid		The userid (integer)
 		
-		@return OK if deleted, NO_SUCH_USER if not found.
+		@return OK if deleted, NOT_FOUND if not found.
 		
 		@throws BadCallError if neither username or userid are specified.
 		'''
@@ -124,13 +147,11 @@ class UserSpace(object):
 		cr = self.connector.cursor()
 		cr.execute(query, (value,))
 		if cr.rowcount == 0:
-			rc = NO_SUCH_USER
+			rc = NOT_FOUND
 		else:
 			rc = OK
 		cr.close()
 		return rc
-		 
-			
 		
 	def change_password(self, username, newpassword, oldpassword=None):
 		'''Change a user's password
@@ -142,27 +163,81 @@ class UserSpace(object):
 		and the call will fail if they don't match.
 		If oldpassword is not specified, the password will be changed unconditionally.
 		
-		@returns OK or NO_SUCH_USER
+		@returns OK, NOT_FOUND or REJECTED
 		'''
-		pass
+		if oldpassword is not None:
+			key = self.validate_user(username, oldpassword)
+			if not key:
+				return REJECTED
+			self._kill_session(key)
+			
+		cr = self.connector.cursor()
+		cr.execute("select userid, salt from users where username = ?",
+					(username,))
+		row = cr.fetchone()
+		if row is None:
+			cr.close()
+			return NOT_FOUND
+		userid, salt = row
+
+		bpwd = bytes(newpassword, "utf-8")
+		hashpwd = hashlib.pbkdf2_hmac("sha512", bpwd, 
+								binascii.unhexlify(salt), 100000)
+		cr.execute("update users set kpasswd = ? where userid = ?",
+					(binascii.hexlify(hashpwd), userid))
+		self.connector.commit()
+		cr.close()
+		return OK
+		
+	def _kill_session(self, key):
+		cr = self.connector.cursor()
+		cr.execute("delete from sessions where key = ?", (key,))
+		self.connector.commit()
+		cr.close()
 		
 	def check_key(self, key):
 		'''Reset the session timeout.
 		@param	key	The session key returned by validate_user()
 		@returns	Tuple of the form (rc, username, userid)
-					where rc is OK, NO_SUCH_USER or EXPIRED
-					if NO_SUCH_USER or EXPIRED, username and userid will be None
+					where rc is OK, NOT_FOUND or EXPIRED
+					if NOT_FOUND or EXPIRED, username and userid will be None
 					
 		Resets the key's Time To Live to TIMEOUT
 		'''
-		pass
+		cr = self.connector.cursor()
+		cr.execute("select * from sessions where key = ?", (key,))
+		session_row = cr.fetchone()
+		if session_row is None:
+			cr.close()
+			return (NOT_FOUND, None, None)
+		now = time.time()
+		uid, key, timeout = session_row
+		if timeout < now:
+			cr.execute("delete from sessions where key = ?", (key,))
+			self.connector.commit()
+			cr.close()
+			return (EXPIRED, None, None)
+			
+		cr.execute("select username from users where userid = ?", (uid,))
+		user_row = cr.fetchone()
+		if user_row is None:
+			cr.close()
+			raise BadCallError("DB Inconsistent: session without valid user.")
+		username = user_row[0]
 		
-	def set_session_TTL(self, minutes):
+		timeout = now + self.ttl
+		cr.execute("""update sessions set expiration = ? 
+		              where key = ?""", (timeout, key))
+		self.connector.commit()
+		cr.close()
+		return (OK, username, uid)
+		
+	def set_session_TTL(self, secs):
 		'''Sets the TTL for all sessions.
-		@param	minutes	number of minutes of Time To Live.
-		All sessions will be reset to this new TTL value.
+		@param	secs	number of seconds of Time To Live.
+		All new sessions or checked sessions will be set to this new TTL value.
 		'''
-		pass
+		self.ttl = secs
 		
 	def find_user(self, username=None, email=None, userid=None):
 		'''Find a user given either its username, its email or its userid.
@@ -206,7 +281,7 @@ def dbm_select(connector_name):
 	Database.install_connector(connector_name)
 	
 		
-def dbinit(db):
+def _dbinit(db):
 	'''Create a new database structure
 	'''		
 	sql = [  # statements to be executed in sequence
@@ -214,15 +289,15 @@ def dbinit(db):
 			userid		integer primary key autoincrement,
 			username	varchar(20) unique,
 			email		varchar(128) unique,
-			salt		varchar(16),
-			kpasswd		varchar(32),
+			salt		varchar(32),
+			kpasswd		varchar(128),
 			extra_data	blob
 			)
 	''',
 	'''create table if not exists sessions (
 			userid	integer,
-			key 	varchar(64),
-			expiration integer
+			key 	varchar(32),
+			expiration real
 			)
 	''',
 	      ]
