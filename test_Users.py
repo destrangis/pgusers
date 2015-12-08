@@ -1,6 +1,8 @@
 #! /usr/bin/env python3
 import os
 import unittest
+import time
+from unittest.mock import MagicMock
 
 import Users
 
@@ -92,8 +94,8 @@ class UserTests(unittest.TestCase):
 						self.us.find_user)
 						
 	def test_delete_nonexisting_user(self):
-		"Delete non existing user returns NO_SUCH_USER"
-		self.assertEqual(Users.NO_SUCH_USER, 
+		"Delete non existing user returns NOT_FOUND"
+		self.assertEqual(Users.NOT_FOUND, 
 				self.us.delete_user(username="pedro"))
 				
 	def test_delete_existing_user(self):
@@ -144,6 +146,71 @@ class PasswordTests(unittest.TestCase):
 		key = self.us.validate_user("idontexist", "pass")
 		self.assertFalse(key)
 		
+	def test_change_password_with_oldpassword(self):
+		"Unprivileged change password can be changed"
+		self.us.create_user("user8", "pass8", "user8@suchandsu.ch")
+		rc = self.us.change_password("user8", "pass8888", "pass8")
+		self.assertEqual(rc, Users.OK)
+		
+	def test_change_password_with_bad_oldpassword(self):
+		"Unprivileged change password rejected if bad oldpassword"
+		self.us.create_user("user8", "pass8", "user8@suchandsu.ch")
+		rc = self.us.change_password("user8", "pass8888", "pass9")
+		self.assertEqual(rc, Users.REJECTED)
+		
+	def test_change_password(self):
+		"Privileged change password works"
+		self.us.create_user("user9", "pass9", "user9@suchandsu.ch")
+		rc = self.us.change_password("user9", "pass99999")
+		self.assertEqual(rc, Users.OK)
+		
+	def test_change_password_nonexisting_user(self):
+		"Can't change password to nonexisting user"
+		rc = self.us.change_password("user10", "pass10")
+		self.assertEqual(rc, Users.NOT_FOUND)
+				
+	def test_session_gets_updated(self):
+		"A validated session gets updated"
+		#import pdb; pdb.set_trace()
+		self.us.create_user("user10", "pass10", "user10@suchandsu.ch")
+		userdata = self.us.find_user(username="user10")
+		time_time = time.time
+		time.time = MagicMock(return_value=200.0)
+		seskey = self.us.validate_user("user10", "pass10")
+		#at this point expiration time is 200.0+self.ttl
+		
+		# set the time at ttl - 1 minute
+		time.time.return_value = 200.0 + self.us.ttl - 60.0
+		rc, uname, uid = self.us.check_key(seskey)
+		self.assertEqual(rc, Users.OK)
+		self.assertEqual(uname, userdata["username"])
+		self.assertEqual(uid, userdata["userid"])
+		
+		#set eht time at 1 min after ttl. It should have been renewed.
+		time.time.return_value = 200.0 + self.us.ttl + 60.0
+		rc, uname, uid = self.us.check_key(seskey)
+		self.assertEqual(rc, Users.OK)
+		self.assertEqual(uname, userdata["username"])
+		self.assertEqual(uid, userdata["userid"])
+		
+		time.time = time_time
+		
+	def test_session_expires(self):
+		"Sessions expire after their time to live"
+		self.us.create_user("user11", "pass11", "user11@suchandsu.ch")
+		userdata = self.us.find_user(username="user11")
+		time_time = time.time
+		time.time = MagicMock(return_value=200.0)
+		seskey = self.us.validate_user("user11", "pass11")
+		
+		# set time 1 minute after expiration
+		time.time.return_value = 200.0 + self.us.ttl + 60.0
+		rc, uname, uid = self.us.check_key(seskey)
+		self.assertEqual(rc, Users.EXPIRED)
+		self.assertIsNone(uname)
+		self.assertIsNone(uid)
+		
+		time.time = time_time
 
 if __name__ == "__main__":
 	unittest.main()
