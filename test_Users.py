@@ -119,6 +119,37 @@ class UserTests(unittest.TestCase):
 		self.assertRaises(Users.BadCallError,
 					self.us.delete_user)
 					
+	def test_modify_user(self):
+		"Can modify user data."
+		userid = self.us.create_user("user20", "pass20", 
+									"user20@doesntexi.st", 
+									{"name": "Dave"})
+		rc = self.us.modify_user(userid,
+							username="user21",
+							email="user21@somewhereel.se",
+							extra_data={"name": "Henrietta",
+							            "age": 22})
+		self.assertEqual(rc, Users.OK)
+		userdata = self.us.find_user(userid=userid)
+		self.assertEqual(userdata["username"], "user21")
+		self.assertEqual(userdata["email"], "user21@somewhereel.se")
+		self.assertEqual(userdata["extra_data"],
+		                      {"name": "Henrietta",
+							   "age": 22})
+							   
+	def test_modify_nonexisting_user(self):
+		"Modify nonexisting user reports NOT_FOUND"
+		userid = self.us.create_user("user22", "pass22", 
+									"user22@doesntexi.st", 
+									{"name": "Henrietta"})
+		self.assertEqual(Users.OK, self.us.delete_user(userid=userid))							
+		rc = self.us.modify_user(userid,
+							username="user23",
+							email="user23@somewhereel.se",
+							extra_data={"name": "Abelard",
+										"age": 82})
+		self.assertEqual(rc, Users.NOT_FOUND)
+
 
 class PasswordTests(unittest.TestCase):
 	
@@ -130,43 +161,47 @@ class PasswordTests(unittest.TestCase):
 						
 	def test_authenticate_good_password(self):
 		"Can authenticate a user with good password"
-		self.us.create_user("user6", "pass6", "user6@suchandsu.ch")						
-		key = self.us.validate_user("user6", "pass6")
+		userid = self.us.create_user("user6", "pass6", "user6@suchandsu.ch")						
+		key, uid = self.us.validate_user("user6", "pass6")
 		self.assertEqual(type(key), bytes)
 		self.assertTrue(key)
+		self.assertEqual(uid, userid)
 		
 	def test_authenticate_bad_password(self):
 		"Existing users with incorrect passwords are not authenticated"
 		self.us.create_user("user7", "pass7", "user7@suchandsu.ch")	
-		key = self.us.validate_user("user7", "badpass")
+		key, uid = self.us.validate_user("user7", "badpass")
 		self.assertFalse(key)
+		self.assertIsNone(uid)
 		
 	def test_nonexisting_users_not_authenticated(self):
 		"Nonexisting users are not authenticated"
-		key = self.us.validate_user("idontexist", "pass")
+		key, uid = self.us.validate_user("idontexist", "pass")
 		self.assertFalse(key)
+		self.assertIsNone(uid)
 		
 	def test_change_password_with_oldpassword(self):
 		"Unprivileged change password can be changed"
-		self.us.create_user("user8", "pass8", "user8@suchandsu.ch")
-		rc = self.us.change_password("user8", "pass8888", "pass8")
+		uid = self.us.create_user("user8", "pass8", "user8@suchandsu.ch")
+		rc = self.us.change_password(uid, "pass8888", "pass8")
 		self.assertEqual(rc, Users.OK)
 		
 	def test_change_password_with_bad_oldpassword(self):
 		"Unprivileged change password rejected if bad oldpassword"
-		self.us.create_user("user8", "pass8", "user8@suchandsu.ch")
-		rc = self.us.change_password("user8", "pass8888", "pass9")
+		uid = self.us.create_user("user8", "pass8", "user8@suchandsu.ch")
+		rc = self.us.change_password(uid, "pass8888", "pass9")
 		self.assertEqual(rc, Users.REJECTED)
 		
 	def test_change_password(self):
 		"Privileged change password works"
-		self.us.create_user("user9", "pass9", "user9@suchandsu.ch")
-		rc = self.us.change_password("user9", "pass99999")
+		uid = self.us.create_user("user9", "pass9", "user9@suchandsu.ch")
+		rc = self.us.change_password(uid, "pass99999")
 		self.assertEqual(rc, Users.OK)
 		
 	def test_change_password_nonexisting_user(self):
 		"Can't change password to nonexisting user"
-		rc = self.us.change_password("user10", "pass10")
+		uid = 45343
+		rc = self.us.change_password(uid, "pass10")
 		self.assertEqual(rc, Users.NOT_FOUND)
 				
 	def test_session_gets_updated(self):
@@ -175,7 +210,7 @@ class PasswordTests(unittest.TestCase):
 		userid = self.us.create_user("user10", "pass10", "user10@suchandsu.ch")
 		time_time = time.time
 		time.time = MagicMock(return_value=200.0)
-		seskey = self.us.validate_user("user10", "pass10")
+		seskey, userid = self.us.validate_user("user10", "pass10")
 		#at this point expiration time is 200.0+self.ttl
 		
 		# set the time at ttl - 1 minute
@@ -201,7 +236,7 @@ class PasswordTests(unittest.TestCase):
 		userid = self.us.create_user("user11", "pass11", "user11@suchandsu.ch")
 		time_time = time.time
 		time.time = MagicMock(return_value=200.0)
-		seskey = self.us.validate_user("user11", "pass11")
+		seskey, userid = self.us.validate_user("user11", "pass11")
 		
 		# set time 1 minute after expiration
 		time.time.return_value = 200.0 + self.us.ttl + 60.0
@@ -215,7 +250,7 @@ class PasswordTests(unittest.TestCase):
 		
 	def test_recover_session_xtradata(self):
 		self.us.create_user("user12", "pass12", "user12@all.net")
-		seskey = self.us.validate_user("user12", "pass12", 
+		seskey, userid = self.us.validate_user("user12", "pass12", 
 									{"ip": "195.16.159.2"})
 		rc, uname, uid, xtra = self.us.check_key(seskey)
 		self.assertEqual(uname, "user12")
