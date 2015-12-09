@@ -172,8 +172,7 @@ class PasswordTests(unittest.TestCase):
 	def test_session_gets_updated(self):
 		"A validated session gets updated"
 		#import pdb; pdb.set_trace()
-		self.us.create_user("user10", "pass10", "user10@suchandsu.ch")
-		userdata = self.us.find_user(username="user10")
+		userid = self.us.create_user("user10", "pass10", "user10@suchandsu.ch")
 		time_time = time.time
 		time.time = MagicMock(return_value=200.0)
 		seskey = self.us.validate_user("user10", "pass10")
@@ -181,36 +180,46 @@ class PasswordTests(unittest.TestCase):
 		
 		# set the time at ttl - 1 minute
 		time.time.return_value = 200.0 + self.us.ttl - 60.0
-		rc, uname, uid = self.us.check_key(seskey)
+		rc, uname, uid, xtra = self.us.check_key(seskey)
 		self.assertEqual(rc, Users.OK)
-		self.assertEqual(uname, userdata["username"])
-		self.assertEqual(uid, userdata["userid"])
+		self.assertEqual(uname, "user10")
+		self.assertEqual(uid, userid)
+		self.assertIsNone(xtra)
 		
 		#set eht time at 1 min after ttl. It should have been renewed.
 		time.time.return_value = 200.0 + self.us.ttl + 60.0
-		rc, uname, uid = self.us.check_key(seskey)
+		rc, uname, uid, xtra = self.us.check_key(seskey)
 		self.assertEqual(rc, Users.OK)
-		self.assertEqual(uname, userdata["username"])
-		self.assertEqual(uid, userdata["userid"])
+		self.assertEqual(uname, "user10")
+		self.assertEqual(uid, userid)
+		self.assertIsNone(xtra)
 		
 		time.time = time_time
 		
 	def test_session_expires(self):
 		"Sessions expire after their time to live"
-		self.us.create_user("user11", "pass11", "user11@suchandsu.ch")
-		userdata = self.us.find_user(username="user11")
+		userid = self.us.create_user("user11", "pass11", "user11@suchandsu.ch")
 		time_time = time.time
 		time.time = MagicMock(return_value=200.0)
 		seskey = self.us.validate_user("user11", "pass11")
 		
 		# set time 1 minute after expiration
 		time.time.return_value = 200.0 + self.us.ttl + 60.0
-		rc, uname, uid = self.us.check_key(seskey)
+		rc, uname, uid, xtra = self.us.check_key(seskey)
 		self.assertEqual(rc, Users.EXPIRED)
 		self.assertIsNone(uname)
 		self.assertIsNone(uid)
+		self.assertIsNone(xtra)
 		
 		time.time = time_time
+		
+	def test_recover_session_xtradata(self):
+		self.us.create_user("user12", "pass12", "user12@all.net")
+		seskey = self.us.validate_user("user12", "pass12", 
+									{"ip": "195.16.159.2"})
+		rc, uname, uid, xtra = self.us.check_key(seskey)
+		self.assertEqual(uname, "user12")
+		self.assertEqual(xtra, {"ip": "195.16.159.2"})
 
 if __name__ == "__main__":
 	unittest.main()

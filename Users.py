@@ -84,10 +84,12 @@ class UserSpace(object):
 		return userid
 						 
 		
-	def validate_user(self, username, password):
+	def validate_user(self, username, password, extra_data=None):
 		'''Validates (or logs in) a username.
 		@param	username	The user's username
 		@param 	password	The user's password in cleartext
+		@param	extra_data	Dictionary with additional, user defined 
+							data about the session.
 		
 		@return	Session key, as a string or empty string if not found 
 				or wrong password.
@@ -105,18 +107,18 @@ class UserSpace(object):
 		hpwd = hashlib.pbkdf2_hmac("sha512", bpwd, 
 									binascii.unhexlify(salt), 100000) 
 		if binascii.unhexlify(kpasswd) == hpwd:
-			return self._make_session_key(userid)
+			return self._make_session_key(userid, extra_data)
 		else:
 			return ""
 			
-	def _make_session_key(self, userid):
+	def _make_session_key(self, userid, extra_data):
 		now = time.time()
 		timeout = self.ttl + now
 		sessid = hashlib.md5(bytes(str(userid)+str(now), "utf-8")).digest()
 		xsessid = binascii.hexlify(sessid)
 		cr = self.connector.cursor()
-		cr.execute("insert into sessions values (?, ?, ?)",
-					(userid, xsessid, timeout))
+		cr.execute("insert into sessions values (?, ?, ?, ?)",
+				(userid, xsessid, timeout, pickle.dumps(extra_data)))
 		self.connector.commit()
 		cr.close()
 		return xsessid
@@ -205,32 +207,30 @@ class UserSpace(object):
 		Resets the key's Time To Live to TIMEOUT
 		'''
 		cr = self.connector.cursor()
-		cr.execute("select * from sessions where key = ?", (key,))
+		cr.execute("""select t1.userid, t1.key, t1.expiration,
+		                     t1.extra_data, t2.username
+		    from sessions as t1, users as t2
+		    where  t1.userid = t2.userid and
+		           t1.key = ?""", (key,))
 		session_row = cr.fetchone()
 		if session_row is None:
 			cr.close()
-			return (NOT_FOUND, None, None)
+			return (NOT_FOUND, None, None, None)
 		now = time.time()
-		uid, key, timeout = session_row
+		uid, key, timeout, extra, username = session_row
+		extra_data = pickle.loads(extra)
 		if timeout < now:
 			cr.execute("delete from sessions where key = ?", (key,))
 			self.connector.commit()
 			cr.close()
-			return (EXPIRED, None, None)
-			
-		cr.execute("select username from users where userid = ?", (uid,))
-		user_row = cr.fetchone()
-		if user_row is None:
-			cr.close()
-			raise BadCallError("DB Inconsistent: session without valid user.")
-		username = user_row[0]
+			return (EXPIRED, None, None, None)
 		
 		timeout = now + self.ttl
 		cr.execute("""update sessions set expiration = ? 
 		              where key = ?""", (timeout, key))
 		self.connector.commit()
 		cr.close()
-		return (OK, username, uid)
+		return (OK, username, uid, extra_data)
 		
 	def set_session_TTL(self, secs):
 		'''Sets the TTL for all sessions.
@@ -297,7 +297,8 @@ def _dbinit(db):
 	'''create table if not exists sessions (
 			userid	integer,
 			key 	varchar(32),
-			expiration real
+			expiration real,
+			extra_data	blob
 			)
 	''',
 	      ]
