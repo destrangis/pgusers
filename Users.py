@@ -12,7 +12,7 @@ NOT_FOUND = 1
 EXPIRED = 2
 REJECTED = 3
 
-__version__ = (0, 0, 1)
+__version__ = (0, 0, 3)
 version     = "{0}.{1}.{2}".format(*__version__)
 
 class BadCallError(Exception):
@@ -91,8 +91,10 @@ class UserSpace(object):
 		@param	extra_data	Dictionary with additional, user defined 
 							data about the session.
 		
-		@return	Session key, as a string or empty string if not found 
-				or wrong password.
+		@return	tuple(key, userid)
+						key is a string or empty string if not found 
+				        or wrong password; userid is the user id as 
+				        returned by create_user()
 		'''
 		cr = self.connector.cursor()
 		cr.execute("""select userid, username, salt, kpasswd 
@@ -101,15 +103,15 @@ class UserSpace(object):
 		row = cr.fetchone()
 		cr.close()
 		if row is None:
-			return ""
+			return "", None
 		userid, username, salt, kpasswd = row
 		bpwd = bytes(password, "utf-8")
 		hpwd = hashlib.pbkdf2_hmac("sha512", bpwd, 
 									binascii.unhexlify(salt), 100000) 
 		if binascii.unhexlify(kpasswd) == hpwd:
-			return self._make_session_key(userid, extra_data)
+			return self._make_session_key(userid, extra_data), userid
 		else:
-			return ""
+			return "", None
 			
 	def _make_session_key(self, userid, extra_data):
 		now = time.time()
@@ -155,9 +157,9 @@ class UserSpace(object):
 		cr.close()
 		return rc
 		
-	def change_password(self, username, newpassword, oldpassword=None):
+	def change_password(self, userid, newpassword, oldpassword=None):
 		'''Change a user's password
-		@param	username	The username
+		@param	userid		The user id, as returned by create_user()
 		@param	newpassword	The new password
 		@param	oldpassword	The current password
 		
@@ -166,27 +168,29 @@ class UserSpace(object):
 		If oldpassword is not specified, the password will be changed unconditionally.
 		
 		@returns OK, NOT_FOUND or REJECTED
-		'''
-		if oldpassword is not None:
-			key = self.validate_user(username, oldpassword)
-			if not key:
-				return REJECTED
-			self._kill_session(key)
-			
+		'''		
 		cr = self.connector.cursor()
-		cr.execute("select userid, salt from users where username = ?",
-					(username,))
+		cr.execute("select username from users where userid = ?",
+					(userid,))
 		row = cr.fetchone()
 		if row is None:
 			cr.close()
 			return NOT_FOUND
-		userid, salt = row
+		username = row[0]
+
+		if oldpassword is not None:
+			key, uid = self.validate_user(username, oldpassword)
+			if not key:
+				return REJECTED
+			self._kill_session(key)
 
 		bpwd = bytes(newpassword, "utf-8")
-		hashpwd = hashlib.pbkdf2_hmac("sha512", bpwd, 
-								binascii.unhexlify(salt), 100000)
-		cr.execute("update users set kpasswd = ? where userid = ?",
-					(binascii.hexlify(hashpwd), userid))
+		salt = os.urandom(16)
+		hashpwd = hashlib.pbkdf2_hmac("sha512", bpwd, salt, 100000)
+		cr.execute("update users set kpasswd = ?, salt = ? where userid = ?",
+					(binascii.hexlify(hashpwd), 
+					 binascii.hexlify(salt),
+					 userid))
 		self.connector.commit()
 		cr.close()
 		return OK
@@ -200,7 +204,7 @@ class UserSpace(object):
 	def check_key(self, key):
 		'''Reset the session timeout.
 		@param	key	The session key returned by validate_user()
-		@returns	Tuple of the form (rc, username, userid)
+		@returns	Tuple of the form (rc, username, userid, extra_data)
 					where rc is OK, NOT_FOUND or EXPIRED
 					if NOT_FOUND or EXPIRED, username and userid will be None
 					
@@ -274,6 +278,44 @@ class UserSpace(object):
 			
 		cr.close()
 		return ret_row
+		
+	def modify_user(self, userid, username=None, email=None, extra_data=None):
+		'''Modify user data.
+		@param userid	The user id as returned by create_user()
+		@param username	The new username to change, if specified.
+		@param email	The new email to change, if specified.
+		@param extra_data The new extra_data to change, if specified.
+		
+		@returns OK if successful NOT_FOUND if not.
+		'''
+		rc = OK
+		fields_sql = []
+		fields_list = []
+		if username is not None:
+			fields_sql.append("username = ?")
+			fields_list.append(username)
+		if email is not None:
+			fields_sql.append("email = ?")
+			fields_list.append(email)
+		if extra_data is not None:
+			fields_sql.append("extra_data = ?")
+			fields_list.append(pickle.dumps(extra_data))
+			
+		if fields_list:
+			query = ("update users set " 
+					+ ", ".join(fields_sql) 
+					+ " where userid = ?")
+
+			fields_list.append(userid)
+			
+			cr = self.connector.cursor()
+			cr.execute(query, fields_list)
+			if cr.rowcount <= 0:
+				rc = NOT_FOUND
+			self.connector.commit()
+			cr.close()
+			
+		return rc
 			
 		
 
