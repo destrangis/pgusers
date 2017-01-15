@@ -1,39 +1,41 @@
 #! /usr/bin/env python3
 import os
+import sys
 import unittest
 import time
 from unittest.mock import MagicMock
 
-import Users
+sys.path.append("..") # so Python finds UserManagement in this directory
+import UserManagement.users as users
 
 class InitTests(unittest.TestCase):
 	
 	def tearDown(self):
 		# this only works for the sqlite3 default connector
-		while Users.UserSpace.userspaces:
-			name, value = Users.UserSpace.userspaces.popitem()
+		while users.UserSpace.userspaces:
+			name, value = users.UserSpace.userspaces.popitem()
 			os.remove(name)
 	
 	def test_no_dbname_throws_exception(self):
 		"Constructor w/o dbname throws exception"
-		self.assertRaises(Users.BadCallError, Users.UserSpace)
+		self.assertRaises(users.BadCallError, users.UserSpace)
 		
 	def test_constructor_new(self):
 		"Constructor constructs"
-		us = Users.UserSpace(database="testdb")
+		us = users.UserSpace(database="testdb")
 		self.assertIsNotNone(us)
 		
 	def test_constructor_existing(self):
 		"Test that two instantiations with same dbname return same object"
-		us0 = Users.UserSpace(database="test_new")
-		us1 = Users.UserSpace(database="test_new")
+		us0 = users.UserSpace(database="test_new")
+		us1 = users.UserSpace(database="test_new")
 		self.assertIs(us0, us1)
 	
 		
 class UserTests(unittest.TestCase):
 	
 	def setUp(self):
-		self.us = Users.UserSpace(database="user_tests0")
+		self.us = users.UserSpace(database="user_tests0")
 		
 	def tearDown(self):
 		os.remove("user_tests0")
@@ -47,7 +49,7 @@ class UserTests(unittest.TestCase):
 	def test_duplicate_user_gives_exception(self):
 		"Exception trying to create existing user"
 		self.us.create_user("user2", "pass2", "user2@abc.de")
-		self.assertRaises(Users.BadCallError,
+		self.assertRaises(users.BadCallError,
 						self.us.create_user, "user2", "pass3", "user2@fgh.ij")
 	
 	def test_user_is_found_by_id(self):
@@ -90,18 +92,18 @@ class UserTests(unittest.TestCase):
 		
 	def test_find_user_needs_parameter(self):
 		"find_user without one argument throws exception"
-		self.assertRaises(Users.BadCallError, 
+		self.assertRaises(users.BadCallError, 
 						self.us.find_user)
 						
 	def test_delete_nonexisting_user(self):
 		"Delete non existing user returns NOT_FOUND"
-		self.assertEqual(Users.NOT_FOUND, 
+		self.assertEqual(users.NOT_FOUND, 
 				self.us.delete_user(username="pedro"))
 				
 	def test_delete_existing_user(self):
 		"Can't find a user after deleting it by username"
 		userid = self.us.create_user("user4", "pass4", "user4@doesntexi.st")
-		self.assertEqual(Users.OK, 
+		self.assertEqual(users.OK, 
 				self.us.delete_user(username="user4"))
 		udata = self.us.find_user(userid=userid)
 		self.assertIsNone(udata)
@@ -109,14 +111,14 @@ class UserTests(unittest.TestCase):
 	def test_delete_existing_user_by_id(self):
 		"Can't find a user after deleting it by username"
 		userid = self.us.create_user("user5", "pass5", "user5@doesntexi.st")
-		self.assertEqual(Users.OK, 
+		self.assertEqual(users.OK, 
 				self.us.delete_user(userid=userid))
 		udata = self.us.find_user(userid=userid)
 		self.assertIsNone(udata)
 		
 	def test_delete_throws_exception(self):
 		"Delete throws exception if parameters missing"
-		self.assertRaises(Users.BadCallError,
+		self.assertRaises(users.BadCallError,
 					self.us.delete_user)
 					
 	def test_modify_user(self):
@@ -129,7 +131,7 @@ class UserTests(unittest.TestCase):
 							email="user21@somewhereel.se",
 							extra_data={"name": "Henrietta",
 							            "age": 22})
-		self.assertEqual(rc, Users.OK)
+		self.assertEqual(rc, users.OK)
 		userdata = self.us.find_user(userid=userid)
 		self.assertEqual(userdata["username"], "user21")
 		self.assertEqual(userdata["email"], "user21@somewhereel.se")
@@ -142,19 +144,19 @@ class UserTests(unittest.TestCase):
 		userid = self.us.create_user("user22", "pass22", 
 									"user22@doesntexi.st", 
 									{"name": "Henrietta"})
-		self.assertEqual(Users.OK, self.us.delete_user(userid=userid))							
+		self.assertEqual(users.OK, self.us.delete_user(userid=userid))							
 		rc = self.us.modify_user(userid,
 							username="user23",
 							email="user23@somewhereel.se",
 							extra_data={"name": "Abelard",
 										"age": 82})
-		self.assertEqual(rc, Users.NOT_FOUND)
+		self.assertEqual(rc, users.NOT_FOUND)
 
 
 class PasswordTests(unittest.TestCase):
 	
 	def setUp(self):
-		self.us = Users.UserSpace(database="user_tests0")
+		self.us = users.UserSpace(database="user_tests0")
 		
 	def tearDown(self):
 		os.remove("user_tests0")
@@ -184,25 +186,25 @@ class PasswordTests(unittest.TestCase):
 		"Unprivileged change password can be changed"
 		uid = self.us.create_user("user8", "pass8", "user8@suchandsu.ch")
 		rc = self.us.change_password(uid, "pass8888", "pass8")
-		self.assertEqual(rc, Users.OK)
+		self.assertEqual(rc, users.OK)
 		
 	def test_change_password_with_bad_oldpassword(self):
 		"Unprivileged change password rejected if bad oldpassword"
 		uid = self.us.create_user("user8", "pass8", "user8@suchandsu.ch")
 		rc = self.us.change_password(uid, "pass8888", "pass9")
-		self.assertEqual(rc, Users.REJECTED)
+		self.assertEqual(rc, users.REJECTED)
 		
 	def test_change_password(self):
 		"Privileged change password works"
 		uid = self.us.create_user("user9", "pass9", "user9@suchandsu.ch")
 		rc = self.us.change_password(uid, "pass99999")
-		self.assertEqual(rc, Users.OK)
+		self.assertEqual(rc, users.OK)
 		
 	def test_change_password_nonexisting_user(self):
 		"Can't change password to nonexisting user"
 		uid = 45343
 		rc = self.us.change_password(uid, "pass10")
-		self.assertEqual(rc, Users.NOT_FOUND)
+		self.assertEqual(rc, users.NOT_FOUND)
 				
 	def test_session_gets_updated(self):
 		"A validated session gets updated"
@@ -216,7 +218,7 @@ class PasswordTests(unittest.TestCase):
 		# set the time at ttl - 1 minute
 		time.time.return_value = 200.0 + self.us.ttl - 60.0
 		rc, uname, uid, xtra = self.us.check_key(seskey)
-		self.assertEqual(rc, Users.OK)
+		self.assertEqual(rc, users.OK)
 		self.assertEqual(uname, "user10")
 		self.assertEqual(uid, userid)
 		self.assertIsNone(xtra)
@@ -224,7 +226,7 @@ class PasswordTests(unittest.TestCase):
 		#set eht time at 1 min after ttl. It should have been renewed.
 		time.time.return_value = 200.0 + self.us.ttl + 60.0
 		rc, uname, uid, xtra = self.us.check_key(seskey)
-		self.assertEqual(rc, Users.OK)
+		self.assertEqual(rc, users.OK)
 		self.assertEqual(uname, "user10")
 		self.assertEqual(uid, userid)
 		self.assertIsNone(xtra)
@@ -241,7 +243,7 @@ class PasswordTests(unittest.TestCase):
 		# set time 1 minute after expiration
 		time.time.return_value = 200.0 + self.us.ttl + 60.0
 		rc, uname, uid, xtra = self.us.check_key(seskey)
-		self.assertEqual(rc, Users.EXPIRED)
+		self.assertEqual(rc, users.EXPIRED)
 		self.assertIsNone(uname)
 		self.assertIsNone(uid)
 		self.assertIsNone(xtra)
