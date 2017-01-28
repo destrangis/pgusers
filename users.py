@@ -117,7 +117,7 @@ class UserSpace(object):
 		now = time.time()
 		timeout = self.ttl + now
 		sessid = hashlib.md5(bytes(str(userid)+str(now), "utf-8")).digest()
-		xsessid = binascii.hexlify(sessid)
+		xsessid = binascii.hexlify(sessid).decode("utf-8")
 		cr = self.connector.cursor()
 		cr.execute("insert into sessions values (?, ?, ?, ?)",
 				(userid, xsessid, timeout, pickle.dumps(extra_data)))
