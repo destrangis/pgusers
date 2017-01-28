@@ -165,7 +165,7 @@ class PasswordTests(unittest.TestCase):
 		"Can authenticate a user with good password"
 		userid = self.us.create_user("user6", "pass6", "user6@suchandsu.ch")						
 		key, uid = self.us.validate_user("user6", "pass6")
-		self.assertEqual(type(key), bytes)
+		self.assertEqual(type(key), str)
 		self.assertTrue(key)
 		self.assertEqual(uid, userid)
 		
