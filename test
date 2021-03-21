@@ -1,0 +1,4 @@
+#!/bin/sh
+sudo -u postgres createdb -O postgres pytestdb
+sudo -u postgres python3 test_users.py
+sudo -u postgres dropdb pytestdb
