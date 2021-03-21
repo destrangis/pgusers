@@ -12,7 +12,7 @@ NOT_FOUND = 1
 EXPIRED = 2
 REJECTED = 3
 
-__version__ = (0, 0, 3)
+__version__ = (0, 1, 0)
 version     = "{0}.{1}.{2}".format(*__version__)
 
 class BadCallError(Exception):
