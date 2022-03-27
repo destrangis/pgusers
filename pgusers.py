@@ -12,7 +12,7 @@ NOT_FOUND = 1
 EXPIRED = 2
 REJECTED = 3
 
-__version__ = (0, 1, 0)
+__version__ = (0, 1, 2)
 version     = "{0}.{1}.{2}".format(*__version__)
 
 class BadCallError(Exception):
@@ -21,15 +21,13 @@ class BadCallError(Exception):
 class UserSpace:
 
     userspaces = {}     # instance list
-    ttl = 3600.0        # time in seconds before a session times out
+    ttl = 864000.0      # 10 day default session time to live
 
-    def __new__(cls, *args, **kwargs):
+    def __new__(cls, dbname="", **kwargs):
         '''Return the existing instance if already created or create a new one.
         '''
-        dbname = kwargs.get("database", None)
-        if dbname is None:
-            raise BadCallError("database arg not specified. "
-                                "Use UserSpace(database=<name>)")
+        if not dbname:
+            raise BadCallError("No name for UserSpace")
 
         if cls.userspaces.get(dbname, False):
             return cls.userspaces[dbname]
@@ -39,15 +37,8 @@ class UserSpace:
             return newobj
 
 
-    def __init__(self, dbname=None, **kwargs):
-        if dbname is not None:
-            self.dbname = dbname
-        else:
-            self.dbname = kwargs.pop("database", "NONAME")
-
-        #self.db = Database()
-        #self.connector = self.db.connect(**kwargs)
-        self.connector = psycopg2.connect(dbname=self.dbname, **kwargs)
+    def __init__(self, dbname="", **kwargs):
+        self.connector = psycopg2.connect(dbname=dbname, **kwargs)
         dbinit(self.connector)
 
     def create_user(self, username, password, email, extra_data=None):
@@ -111,6 +102,7 @@ class UserSpace:
         assert cr.rowcount <= 1
         row = cr.fetchone()
         cr.close()
+        self.connector.commit()
         if row is None:
             return "", None
         userid, username, salt, kpasswd = row
@@ -164,6 +156,7 @@ class UserSpace:
         else:
             rc = OK
         cr.close()
+        self.connector.commit()
         return rc
 
     def change_password(self, userid, newpassword, oldpassword=None):
@@ -286,6 +279,7 @@ class UserSpace:
             ret_row = None
 
         cr.close()
+        self.connector.commit()
         return ret_row
 
     def modify_user(self, userid, username=None, email=None, extra_data=None):
@@ -326,6 +320,14 @@ class UserSpace:
 
         return rc
 
+    def all_users(self):
+        '''Generator yielding (userid, username, email) tuples for all users
+        '''
+        with self.connector.cursor() as cr:
+            cr.execute("select userid, username, email from users")
+            for row in cr.fetchall():
+                yield row
+            self.connector.commit()
 
 def dbinit(db):
     '''Create a new database structure
