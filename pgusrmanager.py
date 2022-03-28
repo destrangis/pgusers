@@ -1,6 +1,7 @@
 import sys
 import argparse
 import re
+from datetime import datetime
 from pprint import pprint
 from getpass import getpass
 
@@ -49,6 +50,26 @@ def get_cli_options(argv):
         description="print information about one user",
         help="print information about one user")
     info.add_argument("user", help="userid or email for the user")
+
+    listsess = subparsers.add_parser("listsessions",
+        description="list the sessions of a user (or all the users)",
+        help="list the sessions of a user (or all the users)")
+    listsess.add_argument("--all", "-a", action="store_true", default=False,
+        help="list the sessions of all the users")
+    listsess.add_argument("--expired", "-x", action="store_true", default=False,
+        help="list only the sessions that have expired")
+    listsess.add_argument("user", nargs="?",
+        help="userid or email for the user")
+
+    killsess = subparsers.add_parser("killsessions",
+        description="kill the sessions of a user (or all the users)",
+        help="kill the sessions of a user (or all the users)")
+    killsess.add_argument("--all", "-a", action="store_true", default=False,
+        help="kill the sessions of all the users")
+    killsess.add_argument("--expired", "-x", action="store_true", default=False,
+        help="kill only the sessions that have expired")
+    killsess.add_argument("user", nargs="?",
+        help="userid or email for the user")
 
     return parser.parse_args(argv)
 
@@ -140,9 +161,9 @@ def cmd_listusers(opts):
     userspace = get_userspace(opts)
     for i, (uid, username, email) in enumerate(userspace.all_users()):
         if i == 0:
-            print(f"{'uid':5}|{'username':30}|{'email':30}")
-            print(f"{'='*5}+{'='*30}+{'='*30}")
-        print(f"{uid:5}|{username:30}|{email:30}")
+            print(f"{'uid':5}|{'username':20}|{'email':30}")
+            print(f"{'='*5}+{'='*20}+{'='*30}")
+        print(f"{uid:5}|{username:20}|{email:30}")
     return 0
 
 def cmd_info(opts):
@@ -150,6 +171,49 @@ def cmd_info(opts):
     user = find_user(userspace, opts.user)
     pprint(user)
     return 0
+
+def cmd_killsessions(opts):
+    if opts.user and opts.all:
+        print("A user cannot be specified with --all option.")
+        return 1
+
+    userspace = get_userspace(opts)
+    if opts.all:
+        uid = 0
+    elif opts.user:
+        user = find_user(userspace, opts.user)
+        uid = user["userid"]
+    else:
+        print("Eithe user or --all must be specified")
+        return 1
+
+    userspace.kill_sessions(uid, opts.expired)
+    return 0
+
+def cmd_listsessions(opts):
+    if opts.user and opts.all:
+        print("A user cannot be specified with --all option.")
+        return 1
+
+    userspace = get_userspace(opts)
+    if opts.all:
+        uid = 0
+    elif opts.user:
+        user = find_user(userspace, opts.user)
+        uid = user["userid"]
+    else:
+        print("Eithe user or --all must be specified")
+        return 1
+
+    for i, (username, key, expiration) in enumerate(userspace.list_sessions(uid, opts.expired)):
+        if i == 0:
+            print(f"{'user':10}|{'key':32}|{'expiration':30}")
+            print(f"{'='*10}+{'='*32}+{'='*30}")
+        exp = datetime.fromtimestamp(expiration).strftime("%H:%M:%S.%f %d/%m/%Y")
+        print(f"{username:10}|{key:32}|{exp:30}")
+
+    return 0
+
 
 def main(argv=None):
     if argv is None:
@@ -167,6 +231,8 @@ def main(argv=None):
         "delete": cmd_delete,
         "list": cmd_listusers,
         "info": cmd_info,
+        "listsessions": cmd_listsessions,
+        "killsessions": cmd_killsessions,
         }
     return commands[opts.cmd](opts)
 

@@ -329,6 +329,66 @@ class UserSpace:
                 yield row
             self.connector.commit()
 
+
+    def list_sessions(self, uid, expired=False):
+        now = time.time()
+        sql = """select u.username, s.key, s.expiration
+                 from sessions s
+                 inner join users u on (s.userid = u.userid) """
+        args = []
+        uidcond = ""
+        if uid != 0:
+            uidcond = "(s.userid = %s)"
+            args.append(uid)
+        expcond = ""
+        if expired:
+            expcond = "(s.expiration < %s)"
+            args.append(now)
+
+        if uidcond or expcond:
+            sql += "where "
+        if uidcond:
+            sql += uidcond
+        if uidcond and expcond:
+            sql += " and "
+        if expcond:
+            sql += expcond
+
+        with self.connector.cursor() as cr:
+            cr.execute(sql, args)
+            for row in cr.fetchall():
+                yield row
+
+        self.connector.commit()
+
+    def kill_sessions(self, uid, expired=False):
+        now = time.time()
+        sql = "delete from sessions "
+        args = []
+        uidcond = ""
+        if uid != 0:
+            uidcond = "(userid = %s)"
+            args.append(uid)
+        expcond = ""
+        if expired:
+            expcond = "(expiration < %s)"
+            args.append(now)
+
+        if uidcond or expcond:
+            sql += "where "
+        if uidcond:
+            sql += uidcond
+        if uidcond and expcond:
+            sql += " and "
+        if expcond:
+            sql += expcond
+
+        with self.connector.cursor() as cr:
+            cr.execute(sql, args)
+
+        self.connector.commit()
+
+
 def dbinit(db):
     '''Create a new database structure
     '''
