@@ -1,0 +1,12 @@
+__pycache__/
+*~
+bin/
+build/
+dist/
+include/
+lib/
+lib64
+share/
+*.egg-info/
+.tox/
+pyvenv.cfg
