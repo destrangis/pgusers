@@ -1,6 +1,4 @@
 #! /usr/bin/env python3
-import os
-import sys
 import unittest
 import time
 from unittest.mock import MagicMock
