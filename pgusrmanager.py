@@ -10,68 +10,111 @@ import pgusers
 
 def get_cli_options(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--version", "-v", action="store_true", default=False,
-        help="print the module version and exit")
-    parser.add_argument("--dbuser", "-u", metavar="DBUSER",
-        help="PostgreSQL database user")
-    parser.add_argument("--dbpasswd", "-p", metavar="PASSWD",
-        help="password for the PostgreSQL user")
-    parser.add_argument("--dbhost", "-s", metavar="HOST",
-        help="hostname for the PostgreSQL database")
-    parser.add_argument("--dbport", "-r",  metavar="PORT", default="5432",
-        help="port for the PostgreSQL database")
+    parser.add_argument(
+        "--version",
+        "-v",
+        action="store_true",
+        default=False,
+        help="print the module version and exit",
+    )
+    parser.add_argument(
+        "--dbuser", "-u", metavar="DBUSER", help="PostgreSQL database user"
+    )
+    parser.add_argument(
+        "--dbpasswd", "-p", metavar="PASSWD", help="password for the PostgreSQL user"
+    )
+    parser.add_argument(
+        "--dbhost", "-s", metavar="HOST", help="hostname for the PostgreSQL database"
+    )
+    parser.add_argument(
+        "--dbport",
+        "-r",
+        metavar="PORT",
+        default="5432",
+        help="port for the PostgreSQL database",
+    )
 
-    parser.add_argument("userspace",
-        help="specify the userspace to work with")
+    parser.add_argument("userspace", help="specify the userspace to work with")
 
     subparsers = parser.add_subparsers(title="subcommands", dest="cmd")
 
-    adduser = subparsers.add_parser("adduser",
+    adduser = subparsers.add_parser(
+        "adduser",
         description="add a new user",
-        help="add new user by specifying its userid, email and password")
-    adduser.add_argument("email",  help="The user's email")
-    adduser.add_argument("userid", nargs="?", help="The user id, if different than the email")
+        help="add new user by specifying its userid, email and password",
+    )
+    adduser.add_argument("email", help="The user's email")
+    adduser.add_argument(
+        "userid", nargs="?", help="The user id, if different than the email"
+    )
 
-    cpasswd = subparsers.add_parser("cpasswd",
+    cpasswd = subparsers.add_parser(
+        "cpasswd",
         description="change the password for a user",
-        help="change the password for a user")
+        help="change the password for a user",
+    )
     cpasswd.add_argument("user", help="userid or email for the user")
 
-    deluser = subparsers.add_parser("delete",
-        description="delete a user",
-        help="delete a user")
+    deluser = subparsers.add_parser(
+        "delete", description="delete a user", help="delete a user"
+    )
     deluser.add_argument("user", help="userid or email for the user")
 
-    listusers = subparsers.add_parser("list",
-        description="list all users",
-        help="list all users")
+    listusers = subparsers.add_parser(
+        "list", description="list all users", help="list all users"
+    )
 
-    info = subparsers.add_parser("info",
+    info = subparsers.add_parser(
+        "info",
         description="print information about one user",
-        help="print information about one user")
+        help="print information about one user",
+    )
     info.add_argument("user", help="userid or email for the user")
 
-    listsess = subparsers.add_parser("listsessions",
+    listsess = subparsers.add_parser(
+        "listsessions",
         description="list the sessions of a user (or all the users)",
-        help="list the sessions of a user (or all the users)")
-    listsess.add_argument("--all", "-a", action="store_true", default=False,
-        help="list the sessions of all the users")
-    listsess.add_argument("--expired", "-x", action="store_true", default=False,
-        help="list only the sessions that have expired")
-    listsess.add_argument("user", nargs="?",
-        help="userid or email for the user")
+        help="list the sessions of a user (or all the users)",
+    )
+    listsess.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        default=False,
+        help="list the sessions of all the users",
+    )
+    listsess.add_argument(
+        "--expired",
+        "-x",
+        action="store_true",
+        default=False,
+        help="list only the sessions that have expired",
+    )
+    listsess.add_argument("user", nargs="?", help="userid or email for the user")
 
-    killsess = subparsers.add_parser("killsessions",
+    killsess = subparsers.add_parser(
+        "killsessions",
         description="kill the sessions of a user (or all the users)",
-        help="kill the sessions of a user (or all the users)")
-    killsess.add_argument("--all", "-a", action="store_true", default=False,
-        help="kill the sessions of all the users")
-    killsess.add_argument("--expired", "-x", action="store_true", default=False,
-        help="kill only the sessions that have expired")
-    killsess.add_argument("user", nargs="?",
-        help="userid or email for the user")
+        help="kill the sessions of a user (or all the users)",
+    )
+    killsess.add_argument(
+        "--all",
+        "-a",
+        action="store_true",
+        default=False,
+        help="kill the sessions of all the users",
+    )
+    killsess.add_argument(
+        "--expired",
+        "-x",
+        action="store_true",
+        default=False,
+        help="kill only the sessions that have expired",
+    )
+    killsess.add_argument("user", nargs="?", help="userid or email for the user")
 
     return parser.parse_args(argv)
+
 
 def get_userspace(opts):
     name = opts.userspace
@@ -82,10 +125,11 @@ def get_userspace(opts):
         params["password"] = opts.dbpasswd
     if opts.dbhost:
         params["host"] = opts.dbhost
-    if opts.dbhost or opts.dbport != "5432": # don't bother with port if no host
+    if opts.dbhost or opts.dbport != "5432":  # don't bother with port if no host
         params["port"] = opts.dbport
 
     return pgusers.UserSpace(name, **params)
+
 
 def enter_password(userid):
     match = False
@@ -100,6 +144,7 @@ def enter_password(userid):
             print("Passwords don't match.\n")
 
     raise RuntimeError("Too many retries")
+
 
 def find_user(userspace, user):
     udata = userspace.find_user(username=user)
@@ -147,6 +192,7 @@ def cmd_cpassword(opts):
     print(f"Password changed for '{opts.user}'")
     return 0
 
+
 def cmd_delete(opts):
     userspace = get_userspace(opts)
     user = find_user(userspace, opts.user)
@@ -166,11 +212,13 @@ def cmd_listusers(opts):
         print(f"{uid:5}|{username:20}|{email:30}")
     return 0
 
+
 def cmd_info(opts):
     userspace = get_userspace(opts)
     user = find_user(userspace, opts.user)
     pprint(user)
     return 0
+
 
 def cmd_killsessions(opts):
     if opts.user and opts.all:
@@ -190,6 +238,7 @@ def cmd_killsessions(opts):
     userspace.kill_sessions(uid, opts.expired)
     return 0
 
+
 def cmd_listsessions(opts):
     if opts.user and opts.all:
         print("A user cannot be specified with --all option.")
@@ -205,7 +254,9 @@ def cmd_listsessions(opts):
         print("Eithe user or --all must be specified")
         return 1
 
-    for i, (username, key, expiration) in enumerate(userspace.list_sessions(uid, opts.expired)):
+    for i, (username, key, expiration) in enumerate(
+        userspace.list_sessions(uid, opts.expired)
+    ):
         if i == 0:
             print(f"{'user':10}|{'key':32}|{'expiration':30}")
             print(f"{'='*10}+{'='*32}+{'='*30}")
@@ -233,7 +284,7 @@ def main(argv=None):
         "info": cmd_info,
         "listsessions": cmd_listsessions,
         "killsessions": cmd_killsessions,
-        }
+    }
     return commands[opts.cmd](opts)
 
 
