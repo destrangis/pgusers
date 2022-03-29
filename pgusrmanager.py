@@ -60,9 +60,7 @@ def get_cli_options(argv):
     )
     deluser.add_argument("user", help="userid or email for the user")
 
-    listusers = subparsers.add_parser(
-        "list", description="list all users", help="list all users"
-    )
+    subparsers.add_parser("list", description="list all users", help="list all users")
 
     info = subparsers.add_parser(
         "info",
