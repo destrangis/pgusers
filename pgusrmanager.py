@@ -28,7 +28,7 @@ def get_cli_options(argv):
     )
     parser.add_argument(
         "--dbport",
-        "-r",
+        "-t",
         metavar="PORT",
         default="5432",
         help="port for the PostgreSQL database",
@@ -43,10 +43,31 @@ def get_cli_options(argv):
         description="add a new user",
         help="add new user by specifying its userid, email and password",
     )
+    adduser.add_argument(
+        "--admin",
+        "-a",
+        action="store_true",
+        default=False,
+        help="make the new user an admin user",
+    )
     adduser.add_argument("email", help="The user's email")
     adduser.add_argument(
         "userid", nargs="?", help="The user id, if different than the email"
     )
+
+    setadmin = subparsers.add_parser(
+        "setadmin",
+        description="change the privileges of a user",
+        help="add or remove adminstrator privileges to a user",
+    )
+    setadmin.add_argument(
+        "--remove",
+        "-r",
+        action="store_true",
+        default=False,
+        help="demote an administrator to regular user",
+    )
+    setadmin.add_argument("user", help="userid or email for the user")
 
     cpasswd = subparsers.add_parser(
         "cpasswd",
@@ -168,7 +189,7 @@ def cmd_adduser(opts):
         print("Too many retries. Exiting.")
         return 1
 
-    uid = userspace.create_user(userid, password, email, None)
+    uid = userspace.create_user(userid, password, email, opts.admin, None)
     print(f"User '{userid}' created with uid: {uid}")
     return 0
 
@@ -203,11 +224,11 @@ def cmd_delete(opts):
 
 def cmd_listusers(opts):
     userspace = get_userspace(opts)
-    for i, (uid, username, email) in enumerate(userspace.all_users()):
+    for i, (uid, username, email, admin) in enumerate(userspace.all_users()):
         if i == 0:
-            print(f"{'uid':5}|{'username':20}|{'email':30}")
-            print(f"{'='*5}+{'='*20}+{'='*30}")
-        print(f"{uid:5}|{username:20}|{email:30}")
+            print(f"{'uid':5}|{'username':20}|adm|{'email':30}")
+            print(f"{'='*5}+{'='*20}+===+{'='*30}")
+        print(f"{uid:5}|{username:20}|{'yes' if admin else ' ':3}|{email:30}")
     return 0
 
 
@@ -264,6 +285,19 @@ def cmd_listsessions(opts):
     return 0
 
 
+def cmd_setadmin(opts):
+    admin = not opts.remove
+    userspace = get_userspace(opts)
+    user = find_user(userspace, opts.user)
+    if not user:
+        print(f"{opts.user} not found.")
+        return 1
+
+    userspace.set_admin(user["userid"], admin)
+    print(f"{user['username']} is now {'an admin' if admin else 'a regular user'}")
+    return 0
+
+
 def main(argv=None):
     if argv is None:
         argv = sys.argv[1:]
@@ -277,6 +311,7 @@ def main(argv=None):
     commands = {
         "adduser": cmd_adduser,
         "cpasswd": cmd_cpassword,
+        "setadmin": cmd_setadmin,
         "delete": cmd_delete,
         "list": cmd_listusers,
         "info": cmd_info,

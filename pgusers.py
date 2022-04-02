@@ -11,7 +11,7 @@ NOT_FOUND = 1
 EXPIRED = 2
 REJECTED = 3
 
-__version__ = (0, 1, 3)
+__version__ = (0, 1, 4)
 version = "{0}.{1}.{2}".format(*__version__)
 
 
@@ -40,7 +40,7 @@ class UserSpace:
         self.connector = psycopg2.connect(dbname=dbname, **kwargs)
         dbinit(self.connector)
 
-    def create_user(self, username, password, email, extra_data=None):
+    def create_user(self, username, password, email, admin=False, extra_data=None):
         """Create a user in the UserSpace's database.
         @param username The username to be created, if there is already
                         a record with that username, a BadCallError is
@@ -49,6 +49,7 @@ class UserSpace:
         @param email    Email for notifications or password recovery.
                         BadCallError is raised if the email exists in
                         the database.
+        @param admin    Whether the user is an admin.
         @param extra_data An application dependent dictionary to be stored
                         as a pickle (e.g. phone number, password reminders,
                         etc)
@@ -66,9 +67,9 @@ class UserSpace:
         edata = pickle.dumps(extra_data)
         try:
             cr.execute(
-                "insert into users (username, email, salt, kpasswd, extra_data) "
-                "values (%s, %s, %s, %s, %s)",
-                (username, email, salt.hex(), kpasswd.hex(), edata),
+                "insert into users (username, email, salt, kpasswd, admin, extra_data) "
+                "values (%s, %s, %s, %s, %s, %s)",
+                (username, email, salt.hex(), kpasswd.hex(), admin, edata),
             )
         except Exception as err:
             raise BadCallError(str(err))
@@ -80,6 +81,30 @@ class UserSpace:
             cr.close()
         return userid
 
+    def is_admin(self, userid):
+        """
+        True if a user is admin
+        @param userid   The user id as returned by find_user()
+        @return True if the user is admin, False otherwise
+        """
+        with self.connector.cursor() as cr:
+            cr.execute("select admin from users where userid = %s", (userid,))
+            result = list(cr.fetchall())
+            self.connector.commit()
+            if result:
+                return result[0][0]
+            else:
+                raise BadCallError("User {} not found.".format(userid))
+
+    def set_admin(self, userid, admin=True):
+        """
+        Mark the user as admin
+        """
+        admin = True if admin else False  # force a truthy or falsey value to boolean
+        with self.connector.cursor() as cr:
+            cr.execute("update users set admin = %s where userid = %s", (admin, userid))
+            self.connector.commit()
+
     def validate_user(self, username, password, extra_data=None):
         """Validates (or logs in) a username.
         @param  username    The user's username
@@ -87,14 +112,15 @@ class UserSpace:
         @param  extra_data  Dictionary with additional, user defined
                             data about the session.
 
-        @return tuple(key, userid)
+        @return tuple(key, admin, userid)
                         key is a string or empty string if not found
                         or wrong password; userid is the user id as
                         returned by create_user()
         """
         cr = self.connector.cursor()
         cr.execute(
-            "select userid, username, salt, kpasswd " "from users where username = %s",
+            "select userid, username, salt, kpasswd, admin "
+            "from users where username = %s",
             (username,),
         )
         assert cr.rowcount <= 1
@@ -102,14 +128,14 @@ class UserSpace:
         cr.close()
         self.connector.commit()
         if row is None:
-            return "", None
-        userid, username, salt, kpasswd = row
+            return "", False, None
+        userid, username, salt, kpasswd, admin = row
         bpwd = bytes(password, "utf-8")
         hpwd = hashlib.pbkdf2_hmac("sha512", bpwd, binascii.unhexlify(salt), 100000)
         if binascii.unhexlify(kpasswd) == hpwd:
-            return self._make_session_key(userid, extra_data), userid
+            return self._make_session_key(userid, extra_data), admin, userid
         else:
-            return "", None
+            return "", False, None
 
     def _make_session_key(self, userid, extra_data):
         now = time.time()
@@ -180,7 +206,7 @@ class UserSpace:
         username = row[0]
 
         if oldpassword is not None:
-            key, uid = self.validate_user(username, oldpassword)
+            key, admin, uid = self.validate_user(username, oldpassword)
             if not key:
                 return REJECTED
             self._kill_session(key)
@@ -253,11 +279,12 @@ class UserSpace:
         @param  username    The username string.
         @param  email       The email string.
         @param  userid      The userid (integer)
-        @returns A dictionary with fields userid, username, email and extra_data
+        @returns A dictionary with fields userid, username, email, admin, and extra_data
                  None if not found.
         """
         query_stmt = (
-            "select userid, username, email, extra_data " "from users where {} = %s"
+            "select userid, username, email, admin, extra_data "
+            "from users where {} = %s"
         )
         if username is not None:
             query = query_stmt.format("username")
@@ -325,9 +352,11 @@ class UserSpace:
         return rc
 
     def all_users(self):
-        """Generator yielding (userid, username, email) tuples for all users"""
+        """Generator yielding (userid, username, email, admin) tuples for all users"""
         with self.connector.cursor() as cr:
-            cr.execute("select userid, username, email from users")
+            cr.execute(
+                "select userid, username, email, admin from users " "order by username"
+            )
             for row in cr.fetchall():
                 yield row
             self.connector.commit()
@@ -400,6 +429,7 @@ def dbinit(db):
             email       varchar(128),
             salt        varchar(32),
             kpasswd     varchar(128),
+            admin       boolean not null default 'no',
             extra_data  bytea
             )
     """,
