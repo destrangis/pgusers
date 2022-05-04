@@ -34,8 +34,18 @@ class UserSpace:
             return newobj
 
     def __init__(self, dbname="", **kwargs):
+        self.dbname = dbname
+        self.connection_args = kwargs
         self.connector = psycopg2.connect(dbname=dbname, **kwargs)
         dbinit(self.connector)
+
+    def _cursor(self):
+        """Return a cursor, re-connecting to the database if necessary"""
+        if self.connector.closed:
+            self.connector = psycopg2.connect(
+                dbname=self.dbname, **self.connection_args
+            )
+        return self.connector.cursor()
 
     def create_user(self, username, password, email, admin=False, extra_data=None):
         """Create a user in the UserSpace's database.
@@ -54,7 +64,7 @@ class UserSpace:
         @return Integer representing the user id
         """
         sql_retrieve_username = "select userid from users where username = %s"
-        cr = self.connector.cursor()
+        cr = self._cursor()
         cr.execute(sql_retrieve_username, (username,))
         if cr.fetchone():
             raise BadCallError(f"User '{username}' already in database")
@@ -84,7 +94,7 @@ class UserSpace:
         @param userid   The user id as returned by find_user()
         @return True if the user is admin, False otherwise
         """
-        with self.connector.cursor() as cr:
+        with self._cursor() as cr:
             cr.execute("select admin from users where userid = %s", (userid,))
             result = list(cr.fetchall())
             self.connector.commit()
@@ -98,7 +108,7 @@ class UserSpace:
         Mark the user as admin
         """
         admin = True if admin else False  # force a truthy or falsey value to boolean
-        with self.connector.cursor() as cr:
+        with self._cursor() as cr:
             cr.execute("update users set admin = %s where userid = %s", (admin, userid))
             self.connector.commit()
 
@@ -114,7 +124,7 @@ class UserSpace:
                         or wrong password; userid is the user id as
                         returned by create_user()
         """
-        cr = self.connector.cursor()
+        cr = self._cursor()
         cr.execute(
             "select userid, username, salt, kpasswd, admin "
             "from users where username = %s",
@@ -139,7 +149,7 @@ class UserSpace:
         timeout = self.ttl + now
         sessid = hashlib.md5(bytes(str(userid) + str(now), "utf-8")).hexdigest()
         # xsessid = binascii.hexlify(sessid).decode("utf-8")
-        cr = self.connector.cursor()
+        cr = self._cursor()
         cr.execute(
             "insert into sessions values (%s, %s, %s, %s)",
             (userid, sessid, timeout, pickle.dumps(extra_data)),
@@ -172,7 +182,7 @@ class UserSpace:
                 "delete_user(): Either 'username'" + " or 'userid' must be specified."
             )
 
-        cr = self.connector.cursor()
+        cr = self._cursor()
         cr.execute(query, (value,))
         if cr.rowcount == 0:
             rc = NOT_FOUND
@@ -194,7 +204,7 @@ class UserSpace:
 
         @returns OK, NOT_FOUND or REJECTED
         """
-        cr = self.connector.cursor()
+        cr = self._cursor()
         cr.execute("select username from users where userid = %s", (userid,))
         row = cr.fetchone()
         if row is None:
@@ -220,7 +230,7 @@ class UserSpace:
         return OK
 
     def _kill_session(self, key):
-        cr = self.connector.cursor()
+        cr = self._cursor()
         cr.execute("delete from sessions where key = %s", (key,))
         self.connector.commit()
         cr.close()
@@ -234,7 +244,7 @@ class UserSpace:
 
         Resets the key's Time To Live to TIMEOUT
         """
-        cr = self.connector.cursor()
+        cr = self._cursor()
         cr.execute(
             """select t1.userid, t1.key, t1.expiration,
                              t1.extra_data, t2.username
@@ -298,7 +308,7 @@ class UserSpace:
                 "'email' or 'userid' must be specified."
             )
 
-        cr = self.connector.cursor()
+        cr = self._cursor()
         cr.execute(query, (value,))
 
         row = cr.fetchone()
@@ -339,7 +349,7 @@ class UserSpace:
 
             fields_list.append(userid)
 
-            cr = self.connector.cursor()
+            cr = self._cursor()
             cr.execute(query, fields_list)
             if cr.rowcount <= 0:
                 rc = NOT_FOUND
@@ -350,7 +360,7 @@ class UserSpace:
 
     def all_users(self):
         """Generator yielding (userid, username, email, admin) tuples for all users"""
-        with self.connector.cursor() as cr:
+        with self._cursor() as cr:
             cr.execute(
                 "select userid, username, email, admin from users " "order by username"
             )
@@ -382,7 +392,7 @@ class UserSpace:
         if expcond:
             sql += expcond
 
-        with self.connector.cursor() as cr:
+        with self._cursor() as cr:
             cr.execute(sql, args)
             for row in cr.fetchall():
                 yield row
@@ -411,7 +421,7 @@ class UserSpace:
         if expcond:
             sql += expcond
 
-        with self.connector.cursor() as cr:
+        with self._cursor() as cr:
             cr.execute(sql, args)
 
         self.connector.commit()

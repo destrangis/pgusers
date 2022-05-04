@@ -256,6 +256,13 @@ class PasswordTests(unittest.TestCase):
         rc = self.us.change_password(uid, "pass10")
         self.assertEqual(rc, users.NOT_FOUND)
 
+    def test_cursor_reconnects(self):
+        "Can re-connect after connection is lost"
+        uid = self.us.create_user("user9", "pass9", "user9@suchandsu.ch")
+        self.us.connector.close()
+        udata = self.us.find_user(userid=uid)
+        self.assertIsNotNone(udata)
+
 
 class SessionTests(unittest.TestCase):
     def setUp(self):
