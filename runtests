@@ -1,6 +1,0 @@
-#!/bin/sh
-sudo -u postgres createdb -O postgres pytestdb
-sudo -u postgres PYTHONPATH=./pgusers python3 tests/test_users.py
-rc=$?
-sudo -u postgres dropdb pytestdb
-exit $rc
