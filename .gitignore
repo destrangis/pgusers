@@ -10,3 +10,4 @@ share/
 *.egg-info/
 .tox/
 pyvenv.cfg
+.python-version
