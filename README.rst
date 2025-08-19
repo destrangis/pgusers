@@ -14,19 +14,40 @@ Just download it from PYPI using pip::
 Usage
 -----
 
-In order to use this module, you instantiate a ``UserSpace`` object:
+``UserSpace(**kwargs)``
+~~~~~~~~~~~~~~~~~~~~~~~
+Initialises the UserSpace, creating a database connection if it doesn't exist. The arguments in ``kwargs``
+can be any of the `arguments for a PostgreSQL connection`_, some of the most common are the following:
 
-.. code-block:: python
+.. _arguments for a PostgreSQL connection: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-PARAMKEYWORDS
 
-    import pgusers
++------------+-------------------+--------------------------------------------------------------+
+| Parameter  | Env Variable      | Meaning                                                      |
++============+===================+==============================================================+
+| dbname     | PGUSERS_USERSPACE | The userspace name, i.e. database containing the userspace   |
++------------+-------------------+--------------------------------------------------------------+
+| user       | PGUSERS_ADMIN     | The admin user for the userspace                             |
++------------+-------------------+--------------------------------------------------------------+
+| password   | PGUSERS_PASSWORD  | The password for the admin user                              |
++------------+-------------------+--------------------------------------------------------------+
+| host       | PGUSERS_HOST      | The hostname (PostgreSQL server) where the userspace resides |
++------------+-------------------+--------------------------------------------------------------+
+| port       | PGUSERS_PORT      | The PorstgreSQL server port if not the usual 5432            |
++------------+-------------------+--------------------------------------------------------------+
 
-    usp = pgusers.UserSpace("userlist", host="dbhost.domain.com",
-                            port=5432, user="dbuser")
+For any of the above parameters, the corresponding environment variable can be specified in its place.
 
-Where ``userlist`` must be the name of an existing database instance on
-the PostgreSQL host. The rest of the keyword arguments are those needed to
-create a connection to the database server and are passed straight to
-the ``psycopg2`` module.
+In addition to the above environment variables, PGUSERS_CONNECTION_STRING can be defined as well, with the format
+specified in `PostgreSQL Connection Strings`_.
+
+.. _PostgreSQL Connection Strings: https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING
+
+.. important::
+   When initialising a UserSpace object either `dbname` must be specified in `kwargs`, or the `PGUSERS_USERSPACE`
+   environment variable must be set, even if already specified in the connection string.
+
+The parameters specified in `kwargs` take precedence over the Environment Variables, which, in turn,
+take precedence over parameters in the Connection String.
 
 Repeated connections to the same userspace return the same object.
 

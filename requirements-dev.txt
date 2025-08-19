@@ -1,4 +1,4 @@
-psycopg2
+psycopg[binary]
 tox
 pre-commit
 black

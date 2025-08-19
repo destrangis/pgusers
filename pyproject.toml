@@ -1,3 +1,25 @@
+[project]
+name = "pgusers"
+authors =  [
+    { name = "Javier Llopis", email = "javier@llopis.me" }
+    ]
+description = "user and session management on postgresql database"
+readme = "README.rst"
+license = "MIT"
+dynamic = [ "version" ]
+dependencies = [ "psycopg[binary]" ]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Database"
+]
+
+[project.urls]
+Repository = "https://github.com/destrangis/pgusers"
+
 [build-system]
 requires = [ "setuptools", "wheel" ]
 build-backend = "setuptools.build_meta"
@@ -17,3 +39,13 @@ exclude = '''
   | dist
 )/
 '''
+
+
+[tool.setuptools.packages.find]
+where = ["."]
+
+[tool.setuptools.dynamic]
+version = {attr = "pgusers._version.__version__"}
+
+[project.scripts]
+usermgr = "pgusers.pgusrmanager:main"

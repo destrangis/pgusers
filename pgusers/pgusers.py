@@ -4,12 +4,14 @@ import pickle
 import binascii
 import time
 
-import psycopg2
+import psycopg
 
 OK = 0
 NOT_FOUND = 1
 EXPIRED = 2
 REJECTED = 3
+
+DEFAULT_TTL = 864000.0  # 10 day default session time to live
 
 
 class BadCallError(Exception):
@@ -19,12 +21,17 @@ class BadCallError(Exception):
 class UserSpace:
 
     userspaces = {}  # instance list
-    ttl = 864000.0  # 10 day default session time to live
+    ttl = DEFAULT_TTL  # 10 day default session time to live
 
-    def __new__(cls, dbname="", **kwargs):
+    def __new__(cls, **kwargs):
         """Return the existing instance if already created or create a new one."""
+        dbname = kwargs.get("dbname", os.getenv("PGUSERS_USERSPACE"))
         if not dbname:
-            raise BadCallError("No name for UserSpace")
+            raise BadCallError(
+                "No name specified for UserSpace. "
+                "Use 'dbname' param or 'PGUSERS_USERSPACE' "
+                "environment variable."
+            )
 
         if cls.userspaces.get(dbname, False):
             return cls.userspaces[dbname]
@@ -33,18 +40,45 @@ class UserSpace:
             cls.userspaces[dbname] = newobj
             return newobj
 
-    def __init__(self, dbname="", **kwargs):
-        self.dbname = dbname
-        self.connection_args = kwargs
-        self.connector = psycopg2.connect(dbname=dbname, **kwargs)
+    def __init__(self, **kwargs):
+        self.conninfo = os.getenv("PGUSERS_CONNECTION_STRING", "")
+
+        paramlist = ["dbname", "user", "password", "host", "port"]
+        envvarslist = [
+            "PGUSERS_USERSPACE",
+            "PGUSERS_ADMIN",
+            "PGUSERS_PASSWORD",
+            "PGUSERS_HOST",
+            "PGUSERS_PORT",
+        ]
+
+        # get the values of the environment variables
+        self.connection_params = {}
+        for param, envvar in zip(paramlist, envvarslist):
+            value = os.getenv(envvar)
+            if value is not None:
+                self.connection_params[param] = value
+
+        # augment with kwargs, which takes precedence
+        self.connection_params.update(kwargs)
+
+        self.connector = psycopg.connect(self.conninfo, **self.connection_params)
+        self.dbname = self.connector.info.dbname
         dbinit(self.connector)
+
+    def close(self):
+        self.connector.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
 
     def _cursor(self):
         """Return a cursor, re-connecting to the database if necessary"""
         if self.connector.closed:
-            self.connector = psycopg2.connect(
-                dbname=self.dbname, **self.connection_args
-            )
+            self.connector = psycopg.connect(self.conninfo, **self.connection_params)
         return self.connector.cursor()
 
     def create_user(self, username, password, email, admin=False, extra_data=None):

@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 import pgusers as users
 
 DBNAME = "pytestdb"
+USERNAME = "admin"
+PASSWORD = "nihao2233"
 
 
 class InitTests(unittest.TestCase):
@@ -22,19 +24,22 @@ class InitTests(unittest.TestCase):
 
     def test_constructor_new(self):
         "Constructor constructs"
-        us = users.UserSpace(DBNAME)
+        us = users.UserSpace(dbname=DBNAME, user=USERNAME, password=PASSWORD)
         self.assertIsNotNone(us)
+        us.close()
 
     def test_constructor_existing(self):
         "Test that two instantiations with same dbname return same object"
-        us0 = users.UserSpace(DBNAME)
-        us1 = users.UserSpace(DBNAME)
+        us0 = users.UserSpace(dbname=DBNAME, user=USERNAME, password=PASSWORD)
+        us1 = users.UserSpace(dbname=DBNAME, user=USERNAME, password=PASSWORD)
         self.assertIs(us0, us1)
+        us0.close()
+        us1.close()
 
 
 class UserTests(unittest.TestCase):
     def setUp(self):
-        self.us = users.UserSpace(DBNAME)
+        self.us = users.UserSpace(dbname=DBNAME, user=USERNAME, password=PASSWORD)
 
     def tearDown(self):
         csr = self.us.connector.cursor()
@@ -42,6 +47,7 @@ class UserTests(unittest.TestCase):
         csr.execute("drop table if exists sessions")
         self.us.connector.commit()
         csr.close()
+        self.us.close()
 
     def test_user_gets_added(self):
         "User gets added"
@@ -202,7 +208,7 @@ class UserTests(unittest.TestCase):
 
 class PasswordTests(unittest.TestCase):
     def setUp(self):
-        self.us = users.UserSpace(DBNAME)
+        self.us = users.UserSpace(dbname=DBNAME, user=USERNAME, password=PASSWORD)
 
     def tearDown(self):
         csr = self.us.connector.cursor()
@@ -210,6 +216,7 @@ class PasswordTests(unittest.TestCase):
         csr.execute("drop table if exists sessions")
         self.us.connector.commit()
         csr.close()
+        self.us.close()
 
     def test_authenticate_good_password(self):
         "Can authenticate a user with good password"
@@ -266,7 +273,7 @@ class PasswordTests(unittest.TestCase):
 
 class SessionTests(unittest.TestCase):
     def setUp(self):
-        self.us = users.UserSpace(DBNAME)
+        self.us = users.UserSpace(dbname=DBNAME, user=USERNAME, password=PASSWORD)
 
     def tearDown(self):
         csr = self.us.connector.cursor()
@@ -274,6 +281,7 @@ class SessionTests(unittest.TestCase):
         csr.execute("drop table if exists sessions")
         self.us.connector.commit()
         csr.close()
+        self.us.close()
 
     def test_session_gets_updated(self):
         "A validated session gets updated"

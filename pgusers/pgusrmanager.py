@@ -6,6 +6,7 @@ from pprint import pprint
 from getpass import getpass
 
 import pgusers
+from ._version import __version__
 
 
 def get_cli_options(argv):
@@ -13,25 +14,25 @@ def get_cli_options(argv):
     parser.add_argument(
         "--version",
         "-v",
-        action="store_true",
-        default=False,
+        action="version",
+        version=f"pgusers {__version__}",
         help="print the module version and exit",
     )
     parser.add_argument(
-        "--dbuser", "-u", metavar="DBUSER", help="PostgreSQL database user"
+        "--dbuser", "-u", metavar="DBUSER", help="PostgreSQL userspace owner username"
     )
     parser.add_argument(
-        "--dbpasswd", "-p", metavar="PASSWD", help="password for the PostgreSQL user"
+        "--dbpasswd", "-p", metavar="PASSWD", help="password for the PostgreSQL owner"
     )
     parser.add_argument(
-        "--dbhost", "-s", metavar="HOST", help="hostname for the PostgreSQL database"
+        "--dbhost", "-s", metavar="HOST", help="hostname for the PostgreSQL userspace"
     )
     parser.add_argument(
         "--dbport",
         "-t",
         metavar="PORT",
         default="5432",
-        help="port for the PostgreSQL database",
+        help="port for the PostgreSQL userspace.",
     )
 
     parser.add_argument("userspace", help="specify the userspace to work with")
@@ -136,18 +137,18 @@ def get_cli_options(argv):
 
 
 def get_userspace(opts):
-    name = opts.userspace
     params = {}
+    params["dbname"] = opts.userspace
     if opts.dbuser:
         params["user"] = opts.dbuser
     if opts.dbpasswd:
         params["password"] = opts.dbpasswd
     if opts.dbhost:
         params["host"] = opts.dbhost
-    if opts.dbhost or opts.dbport != "5432":  # don't bother with port if no host
+    if opts.dbport != "5432":
         params["port"] = opts.dbport
 
-    return pgusers.UserSpace(name, **params)
+    return pgusers.UserSpace(**params)
 
 
 def enter_password(userid):
@@ -303,10 +304,6 @@ def main(argv=None):
         argv = sys.argv[1:]
 
     opts = get_cli_options(argv)
-
-    if opts.version:
-        print(f"pgusers {pgusers.version}")
-        return 0
 
     commands = {
         "adduser": cmd_adduser,
